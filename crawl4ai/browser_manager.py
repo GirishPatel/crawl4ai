@@ -942,6 +942,10 @@ class BrowserManager:
         # Only set user_agent if not using CDP (remote browsers manage their own headers)
         if not self.config.cdp_url:
             context_settings["user_agent"] = user_agent
+        else:
+            # When using CDP, explicitly set empty headers to prevent any header overrides
+            # Remote browsers manage all headers and don't allow overrides
+            context_settings["extra_http_headers"] = {}
         
         if crawlerRunConfig:
             # Check if there is value for crawlerRunConfig.proxy_config set add that to context
