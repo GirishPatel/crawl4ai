@@ -669,10 +669,16 @@ class BrowserManager:
             self.browser = await self.playwright.chromium.connect_over_cdp(cdp_url)
             contexts = self.browser.contexts
             if contexts:
+                # Use existing context from remote browser
+                # Don't call setup_context - remote browsers manage their own headers/cookies
+                # and don't allow overriding them via CDP protocol
                 self.default_context = contexts[0]
             else:
+                # Create new context if none exists
                 self.default_context = await self.create_browser_context()
-            await self.setup_context(self.default_context)
+                # Only setup context if not using CDP (CDP contexts can't have headers/cookies overridden)
+                if not self.config.cdp_url:
+                    await self.setup_context(self.default_context)
         else:
             browser_args = self._build_browser_args()
 
