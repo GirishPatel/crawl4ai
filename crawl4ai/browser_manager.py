@@ -969,7 +969,9 @@ class BrowserManager:
             context_settings.update(text_mode_settings)
 
         # inject locale / tz / geo if user provided them
-        if crawlerRunConfig:
+        # Skip locale/timezone when using CDP - they cause Playwright to set headers
+        # (like accept-language) which remote browsers don't allow overriding
+        if crawlerRunConfig and not self.config.cdp_url:
             if crawlerRunConfig.locale:
                 context_settings["locale"] = crawlerRunConfig.locale
             if crawlerRunConfig.timezone_id:
