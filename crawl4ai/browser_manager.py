@@ -544,7 +544,9 @@ async def clone_runtime_state(
 
     # ── 3. runtime-mutable extras from configs ────────────────────────────────
     # headers
-    if browserConfig and browserConfig.headers:
+    # Skip setting headers when using CDP with remote browsers
+    # Remote browsers don't allow overriding HTTP headers via CDP protocol
+    if browserConfig and browserConfig.headers and not browserConfig.cdp_url:
         await dst.set_extra_http_headers(browserConfig.headers)
 
     # geolocation
@@ -793,8 +795,21 @@ class BrowserManager:
         Returns:
             None
         """
-        if self.config.headers:
-            await context.set_extra_http_headers(self.config.headers)
+        # Skip setting headers when using CDP with remote browsers
+        # Remote browsers (like BrightData Scraping Browser) don't allow overriding
+        # HTTP headers via CDP protocol, which causes Protocol errors
+        if not self.config.cdp_url:
+            if self.config.headers:
+                await context.set_extra_http_headers(self.config.headers)
+
+            # Handle user agent and browser hints
+            if self.config.user_agent:
+                combined_headers = {
+                    "User-Agent": self.config.user_agent,
+                    "sec-ch-ua": self.config.browser_hint,
+                }
+                combined_headers.update(self.config.headers)
+                await context.set_extra_http_headers(combined_headers)
 
         if self.config.cookies:
             await context.add_cookies(self.config.cookies)
@@ -810,15 +825,6 @@ class BrowserManager:
                 context._impl_obj._options[
                     "downloads_path"
                 ] = self.config.downloads_path
-
-        # Handle user agent and browser hints
-        if self.config.user_agent:
-            combined_headers = {
-                "User-Agent": self.config.user_agent,
-                "sec-ch-ua": self.config.browser_hint,
-            }
-            combined_headers.update(self.config.headers)
-            await context.set_extra_http_headers(combined_headers)
 
         # Add default cookie
         # Skip adding "cookiesEnabled" cookie when using CDP with remote browsers
