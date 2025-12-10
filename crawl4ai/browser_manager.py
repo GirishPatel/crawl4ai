@@ -924,8 +924,9 @@ class BrowserManager:
         ]
 
         # Common context settings
+        # Skip setting user_agent when using CDP with remote browsers
+        # Remote browsers don't allow overriding headers via CDP protocol
         context_settings = {
-            "user_agent": user_agent,
             "viewport": viewport_settings,
             "proxy": proxy_settings,
             "accept_downloads": self.config.accept_downloads,
@@ -934,6 +935,10 @@ class BrowserManager:
             "device_scale_factor": 1.0,
             "java_script_enabled": self.config.java_script_enabled,
         }
+        
+        # Only set user_agent if not using CDP (remote browsers manage their own headers)
+        if not self.config.cdp_url:
+            context_settings["user_agent"] = user_agent
         
         if crawlerRunConfig:
             # Check if there is value for crawlerRunConfig.proxy_config set add that to context
