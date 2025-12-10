@@ -521,7 +521,13 @@ async def clone_runtime_state(
     # ── 1. cookies ────────────────────────────────────────────────────────────
     cookies = await src.cookies()
     if cookies:
-        await dst.add_cookies(cookies)
+        # Filter out "cookiesEnabled" cookie when using CDP with remote browsers
+        # Remote browsers (like BrightData Scraping Browser) don't allow overriding
+        # system cookies like "cookiesEnabled", which causes Protocol errors
+        if browserConfig and browserConfig.cdp_url:
+            cookies = [c for c in cookies if c.get("name") != "cookiesEnabled"]
+        if cookies:
+            await dst.add_cookies(cookies)
 
     # ── 2. localStorage / sessionStorage ──────────────────────────────────────
     state = await src.storage_state()
@@ -815,17 +821,21 @@ class BrowserManager:
             await context.set_extra_http_headers(combined_headers)
 
         # Add default cookie
-        await context.add_cookies(
-            [
-                {
-                    "name": "cookiesEnabled",
-                    "value": "true",
-                    "url": crawlerRunConfig.url
-                    if crawlerRunConfig and crawlerRunConfig.url
-                    else "https://crawl4ai.com/",
-                }
-            ]
-        )
+        # Skip adding "cookiesEnabled" cookie when using CDP with remote browsers
+        # Remote browsers (like BrightData Scraping Browser) don't allow overriding
+        # system cookies like "cookiesEnabled", which causes Protocol errors
+        if not self.config.cdp_url:
+            await context.add_cookies(
+                [
+                    {
+                        "name": "cookiesEnabled",
+                        "value": "true",
+                        "url": crawlerRunConfig.url
+                        if crawlerRunConfig and crawlerRunConfig.url
+                        else "https://crawl4ai.com/",
+                    }
+                ]
+            )
 
         # Handle navigator overrides
         if crawlerRunConfig:
