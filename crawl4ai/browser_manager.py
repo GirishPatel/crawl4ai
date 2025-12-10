@@ -667,14 +667,20 @@ class BrowserManager:
             self.config.use_managed_browser = True
             cdp_url = await self.managed_browser.start() if not self.config.cdp_url else self.config.cdp_url
             self.browser = await self.playwright.chromium.connect_over_cdp(cdp_url)
-            # Always create a new context when using CDP with remote browsers
-            # Existing contexts from remote browsers may have headers configured that
-            # conflict with our navigation attempts (remote browsers don't allow overriding headers)
-            # Creating a fresh context ensures we start with a clean slate
-            self.default_context = await self.create_browser_context()
-            # Don't call setup_context when using CDP - remote browsers manage their own
-            # headers/cookies and don't allow overriding them via CDP protocol
-            if not self.config.cdp_url:
+
+            # For CDP connections to remote browsers (like BrightData Scraping Browser):
+            # - Do NOT create a new context via new_context() - this sets up header override
+            #   mechanisms that remote browsers block during navigation
+            # - Instead, set default_context to None and handle page creation directly via
+            #   browser.new_page() in get_page(), which creates a minimal page without
+            #   header/cookie override setup
+            # - For local CDP connections (managed browser), we can still create a context
+            if self.config.cdp_url:
+                # Remote CDP connection - don't create context, use browser directly
+                self.default_context = None
+            else:
+                # Local managed browser - create context normally
+                self.default_context = await self.create_browser_context()
                 await self.setup_context(self.default_context)
         else:
             browser_args = self._build_browser_args()
@@ -1067,7 +1073,18 @@ class BrowserManager:
 
         # If using a managed browser, just grab the shared default_context
         if self.config.use_managed_browser:
-            if self.config.storage_state:
+            # For remote CDP connections (like BrightData Scraping Browser),
+            # default_context is None - use browser.new_page() directly to avoid
+            # header override mechanisms that remote browsers block
+            if self.default_context is None:
+                # Remote CDP - create page directly from browser
+                # This avoids context creation which sets up header overrides
+                async with self._page_lock:
+                    page = await self.browser.new_page()
+                # Get the context from the page for session storage
+                context = page.context
+                await self._apply_stealth_to_page(page)
+            elif self.config.storage_state:
                 context = await self.create_browser_context(crawlerRunConfig)
                 ctx = self.default_context        # default context, one window only
                 ctx = await clone_runtime_state(context, ctx, crawlerRunConfig, self.config)
